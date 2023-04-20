@@ -326,6 +326,15 @@ class YLBotClient(discord.Client):
                 if not USER_WEATHER.get(message.author.id):
                     await message.channel.send("Сначала задайте город прогноза")
                     return
+                params = {"lat": USER_WEATHER[message.author.id][0],
+                          "lon": USER_WEATHER[message.author.id][1],
+                          "lang": "ru_RU",
+                          "limit": "7",
+                          "hours": "true",
+                          "extra": "true"}
+                headers = {"X-Yandex-API-Key": "97fa72d6-6cec-42c1-90ac-969b3a5c9418"}
+                res = requests.get('https://api.weather.yandex.ru/v2/forecast', params=params, headers=headers).json()
+                print(res)
             elif cmd == "#!place":
                 try:
                     if len(msg2) < 2:
@@ -334,6 +343,7 @@ class YLBotClient(discord.Client):
                     if res == -1:
                         raise NotFound
                     await message.channel.send(f"Место задано на: {' '.join(msg2[1:])}", reference=message)
+                    USER_WEATHER[message.author.id] = res
                     return
                 except NotFound:
                     await message.channel.send('Такое место не найдено.')
