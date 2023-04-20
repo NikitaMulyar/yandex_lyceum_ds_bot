@@ -1,4 +1,6 @@
 import logging
+import pprint
+
 import discord
 from config import BOT_TOKEN
 import requests
@@ -44,11 +46,12 @@ EMOJIS = ['1F' + str(rand_nums[i]) for i in range(40)]
 CONV = 0
 USER_SCORE = {}
 USER_WEATHER = {}
+USER_PLACE = {}
 API_GEO = '40d1649f-0493-4b70-98ba-98533de7710b'
 URL_GEOCODER = 'http://geocode-maps.yandex.ru/1.x/'
 
 
-def get_coords(address):
+def get_coords(address, id_):
     geocoder_params = {
         "apikey": API_GEO,
         "geocode": address,
@@ -59,9 +62,210 @@ def get_coords(address):
         toponym = res["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]
         toponym_coodrinates = toponym["Point"]["pos"]
         toponym_longitude, toponym_lattitude = toponym_coodrinates.split(" ")
+        USER_PLACE[id_] = toponym['metaDataProperty']['GeocoderMetaData']['AddressDetails']['Country']['AddressLine']
         return float(toponym_lattitude), float(toponym_longitude)
     except Exception:
         return -1
+
+
+def get_w(txt):
+    if txt == 'clear':
+        txt = 'Ясно'
+    elif txt == 'partly-cloudy':
+        txt = 'Малооблачно'
+    elif txt == 'cloudy':
+        txt = 'Облачно с прояснениями'
+    elif txt == 'overcast':
+        txt = 'Пасмурно'
+    elif txt == 'drizzle':
+        txt = 'Морось'
+    elif txt == 'light-rain':
+        txt = 'Небольшой дождь'
+    elif txt == 'rain':
+        txt = 'Дождь'
+    elif txt == 'moderate-rain':
+        txt = 'Умеренно сильный дождь'
+    elif txt == 'heavy-rain':
+        txt = 'Сильный дождь'
+    elif txt == 'continuous-heavy-rain':
+        txt = 'Длительный сильный дождь'
+    elif txt == 'showers':
+        txt = 'Ливень'
+    elif txt == 'wet-snow':
+        txt = 'Дождь со снегом'
+    elif txt == 'light-snow':
+        txt = 'Небольшой снег'
+    elif txt == 'snow':
+        txt = 'Снег'
+    elif txt == 'snow-showers':
+        txt = 'Снегопад'
+    elif txt == 'hail':
+        txt = 'Град'
+    elif txt == 'thunderstorm':
+        txt = 'Гроза'
+    elif txt == 'thunderstorm-with-rain':
+        txt = 'Дождь с грозой'
+    elif txt == 'thunderstorm-with-hail':
+        txt = 'Гроза с градом'
+    return txt
+
+
+def get_dir(dir_):
+    if dir_ == 'nw':
+        return 'С-З'
+    if dir_ == 'n':
+        return 'С'
+    if dir_ == 'ne':
+        return 'С-В'
+    if dir_ == 'e':
+        return 'В'
+    if dir_ == 'se':
+        return 'Ю-В'
+    if dir_ == 's':
+        return 'Ю'
+    if dir_ == 'sw':
+        return 'З'
+    if dir_ == 'w':
+        return 'З'
+    return 'Штиль'
+
+
+def get_cl(cl):
+    if cl == 0:
+        return 'Ясно'
+    if cl == 0.25:
+        return 'Малооблачно'
+    if cl == 0.5 or cl == 0.75:
+        return 'Облачно с прояснениями'
+    return 'Пасмурно'
+
+
+def get_embed(res, id_):
+    embed = discord.Embed(title=f"Погода в {USER_PLACE[id_]}", color=0xFF5733,
+                          url=res['info']['url'])
+    curr = res['fact']
+    embed.add_field(name="Температура",
+                    value=str(curr['temp']) + ' °C',
+                    inline=True)
+    embed.add_field(name="Ощущается как",
+                    value=str(curr['feels_like']) + ' °C',
+                    inline=True)
+    if curr.get('temp_water'):
+        embed.add_field(name="Температура воды",
+                        value=str(curr['temp_water']) + ' °C',
+                        inline=False)
+    txt = get_w(curr['condition'])
+    embed.add_field(name="Описание",
+                    value=txt,
+                    inline=False)
+    embed.add_field(name="Скорость ветра",
+                    value=str(curr['wind_speed']) + ' м/с',
+                    inline=True)
+    dir_ = get_dir(curr['wind_dir'])
+    embed.add_field(name="Направ. ветра",
+                    value=dir_,
+                    inline=True)
+    embed.add_field(name="Давление",
+                    value=str(curr['pressure_mm']) + ' мм.рт.ст.',
+                    inline=True)
+    embed.add_field(name="УФ-индекс",
+                    value=str(curr['uv_index']),
+                    inline=True)
+    embed.add_field(name="Влажность",
+                    value=str(curr['humidity']) + ' %',
+                    inline=True)
+    cl = get_cl(curr['cloudness'])
+    embed.add_field(name="Облачность",
+                    value=cl,
+                    inline=False)
+    if curr.get('phenom_condition'):
+        embed.add_field(name="Доп. погод. условия",
+                        value=curr['phenom_condition'],
+                        inline=False)
+    embed.set_author(
+        icon_url=f"https://yastatic.net/weather/i/icons/funky/dark/{res['fact']['icon']}.svg",
+        name='Погода')
+    return embed
+
+
+def send_forecast(res, id_):
+    for i in res['forecasts']:
+        embed = discord.Embed(title=f"Погода в {USER_PLACE[id_]} на {i['date']}", color=0xFF5733,
+                              url=res['info']['url'])
+        embed.set_author(icon_url=f"https://yastatic.net/weather/i/icons/funky/dark/{i['parts']['day_short']['icon']}.svg",
+                         name='Прогноз')
+        embed.add_field(name='Восход', value=i['sunrise'], inline=True)
+        embed.add_field(name='Закат', value=i['sunset'], inline=True)
+        parts = i['parts']
+        day = parts['day_short']
+        pprint.pprint(day)
+        embed.add_field(name='============= День =============', value='', inline=False)
+        embed.add_field(name="Температура",
+                        value=str(day['temp']) + ' °C',
+                        inline=True)
+        embed.add_field(name="Ощущается как",
+                        value=str(day['feels_like']) + ' °C',
+                        inline=True)
+        if day.get('temp_water'):
+            embed.add_field(name="Температура воды",
+                            value=str(day['temp_water']) + ' °C',
+                            inline=False)
+        txt = get_w(day['condition'])
+        embed.add_field(name="Описание",
+                        value=txt,
+                        inline=False)
+        embed.add_field(name="Скорость ветра",
+                        value=str(day['wind_speed']) + ' м/с',
+                        inline=True)
+        dir_ = get_dir(day['wind_dir'])
+        embed.add_field(name="Направ. ветра",
+                        value=dir_,
+                        inline=True)
+        embed.add_field(name="Давление",
+                        value=str(day['pressure_mm']) + ' мм.рт.ст.',
+                        inline=True)
+        if day.get('uv_index'):
+            embed.add_field(name="УФ-индекс",
+                            value=str(day['uv_index']),
+                            inline=True)
+        embed.add_field(name="Влажность",
+                        value=str(day['humidity']) + ' %',
+                        inline=True)
+        cl = get_cl(day['cloudness'])
+        embed.add_field(name="Облачность",
+                        value=cl,
+                        inline=False)
+        day = parts['night_short']
+        embed.add_field(name='============= Ночь =============', value='', inline=False)
+        embed.add_field(name="Мин. темпер.",
+                        value=str(day['temp']) + ' °C',
+                        inline=True)
+        if day.get('temp_water'):
+            embed.add_field(name="Температура воды",
+                            value=str(day['temp_water']) + ' °C',
+                            inline=True)
+        txt = get_w(day['condition'])
+        embed.add_field(name="Описание",
+                        value=txt,
+                        inline=False)
+        embed.add_field(name="Скорость ветра",
+                        value=str(day['wind_speed']) + ' м/с',
+                        inline=True)
+        dir_ = get_dir(day['wind_dir'])
+        embed.add_field(name="Направ. ветра",
+                        value=dir_,
+                        inline=True)
+        embed.add_field(name="Давление",
+                        value=str(day['pressure_mm']) + ' мм.рт.ст.',
+                        inline=True)
+        embed.add_field(name="Влажность",
+                        value=str(day['humidity']) + ' %',
+                        inline=True)
+        cl = get_cl(day['cloudness'])
+        embed.add_field(name="Облачность",
+                        value=cl,
+                        inline=False)
+        yield embed
 
 
 class CaseError(Exception):
@@ -299,7 +503,6 @@ class YLBotClient(discord.Client):
                     await message.channel.send(f'Возникла ошибка:\n`{e}`')
                     return
             elif cmd == "/start":
-                print(CONV)
                 if CONV == 0:
                     await message.channel.send('Начинаем игру! Присылай номер эмодзи.')
                     CONV = 1
@@ -322,6 +525,17 @@ class YLBotClient(discord.Client):
                 if not USER_WEATHER.get(message.author.id):
                     await message.channel.send("Сначала задайте город прогноза")
                     return
+                params = {"lat": USER_WEATHER[message.author.id][0],
+                          "lon": USER_WEATHER[message.author.id][1],
+                          "lang": "ru_RU",
+                          "limit": "7",
+                          "hours": "false",
+                          "extra": "true"}
+                headers = {"X-Yandex-API-Key": "97fa72d6-6cec-42c1-90ac-969b3a5c9418"}
+                res = requests.get('https://api.weather.yandex.ru/v2/forecast', params=params,
+                                   headers=headers).json()
+                for i in send_forecast(res, message.author.id):
+                    await message.channel.send(embed=i)
             elif cmd == "#!current":
                 if not USER_WEATHER.get(message.author.id):
                     await message.channel.send("Сначала задайте город прогноза")
@@ -330,16 +544,17 @@ class YLBotClient(discord.Client):
                           "lon": USER_WEATHER[message.author.id][1],
                           "lang": "ru_RU",
                           "limit": "7",
-                          "hours": "true",
+                          "hours": "false",
                           "extra": "true"}
                 headers = {"X-Yandex-API-Key": "97fa72d6-6cec-42c1-90ac-969b3a5c9418"}
                 res = requests.get('https://api.weather.yandex.ru/v2/forecast', params=params, headers=headers).json()
-                print(res)
+                fr = get_embed(res, message.author.id)
+                await message.channel.send(embed=fr)
             elif cmd == "#!place":
                 try:
                     if len(msg2) < 2:
                         raise IndexError
-                    res = get_coords(" ".join(msg2[1:]))
+                    res = get_coords(" ".join(msg2[1:]), message.author.id)
                     if res == -1:
                         raise NotFound
                     await message.channel.send(f"Место задано на: {' '.join(msg2[1:])}", reference=message)
