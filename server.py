@@ -32,7 +32,10 @@ COMMANDS = {"#!numerals": ('<слово> <число>', 'Согласовать 
             "#!set_lang": ("<<src lang>-<dest lang>>", "Change src and dest lang"),
             "#!text": ("<word>", "Translate <word> from the src lang to dest"),
             "/start": ("", "Начать игру со смайлами"),
-            "/stop": ("", "Закончить игру со смайлами")}
+            "/stop": ("", "Закончить игру со смайлами"),
+            "#!place": ("<city>", "Задать место прогноза"),
+            "#!current": ("", "Посмотреть текущую погоду в месте прогноза"),
+            "#!forecast": ("<days: int>", "Посмотреть прогноз в месте прогноза на указанное кол-во дней")}
 morph = pymorphy2.MorphAnalyzer()
 API_KEY = 'AQVNzhfpiSw09Z_EBDWdUtal9XPJR_I5lVASpWlT'
 FOLDER_ID = 'b1go7l39akkvmdgv9j16'
@@ -40,6 +43,25 @@ rand_nums = random.sample(range(300, 400), k=40)
 EMOJIS = ['1F' + str(rand_nums[i]) for i in range(40)]
 CONV = 0
 USER_SCORE = {}
+USER_WEATHER = {}
+API_GEO = '40d1649f-0493-4b70-98ba-98533de7710b'
+URL_GEOCODER = 'http://geocode-maps.yandex.ru/1.x/'
+
+
+def get_coords(address):
+    geocoder_params = {
+        "apikey": API_GEO,
+        "geocode": address,
+        "format": "json"}
+
+    try:
+        res = requests.get(URL_GEOCODER, params=geocoder_params).json()
+        toponym = res["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]
+        toponym_coodrinates = toponym["Point"]["pos"]
+        toponym_longitude, toponym_lattitude = toponym_coodrinates.split(" ")
+        return float(toponym_lattitude), float(toponym_longitude)
+    except Exception:
+        return -1
 
 
 class CaseError(Exception):
@@ -47,6 +69,10 @@ class CaseError(Exception):
 
 
 class NumberError(Exception):
+    pass
+
+
+class NotFound(Exception):
     pass
 
 
@@ -292,6 +318,35 @@ class YLBotClient(discord.Client):
                     else:
                         await message.channel.send(f"Бот выиграл.")
                     return
+            elif cmd == "#!forecast":
+                if not USER_WEATHER.get(message.author.id):
+                    await message.channel.send("Сначала задайте город прогноза")
+                    return
+            elif cmd == "#!current":
+                if not USER_WEATHER.get(message.author.id):
+                    await message.channel.send("Сначала задайте город прогноза")
+                    return
+            elif cmd == "#!place":
+                try:
+                    if len(msg2) < 2:
+                        raise IndexError
+                    res = get_coords(" ".join(msg2[1:]))
+                    if res == -1:
+                        raise NotFound
+                    await message.channel.send(f"Место задано на: {' '.join(msg2[1:])}", reference=message)
+                    return
+                except NotFound:
+                    await message.channel.send('Такое место не найдено.')
+                    return
+                except ValueError:
+                    await message.channel.send('Все аргументы должны иметь тип `str`')
+                    return
+                except IndexError:
+                    await message.channel.send('Перепроверьте последовательность и кол-во аргументов: `<city>`')
+                    return
+                except Exception as e:
+                    await message.channel.send(f'Возникла ошибка:\n`{e}`')
+                    return
             return
         if "соб" in msg.lower() or "пес" in msg.lower().replace('ё', 'е'):
             url = requests.get(d).json()['message']
@@ -333,7 +388,6 @@ class YLBotClient(discord.Client):
                 EMOJIS.pop(em_u)
                 symb_b = random.choice(EMOJIS)
                 EMOJIS.pop(EMOJIS.index(symb_b))
-                print(symb_b, symb_u)
                 if symb_u > symb_b:
                     USER_SCORE[message.author.id]['User'] += 1
                 else:
