@@ -8,6 +8,7 @@ from datetime import timedelta
 import pymorphy2
 import urllib3
 import certifi
+import random
 
 logger = logging.getLogger('discord')
 logger.setLevel(logging.DEBUG)
@@ -29,10 +30,16 @@ COMMANDS = {"#!numerals": ('<слово> <число>', 'Согласовать 
             "#!inf": ("<слово>", "Начальная форма слова"),
             "#!morph": ("<слово>", "Полный морфологический разбор слова"),
             "#!set_lang": ("<<src lang>-<dest lang>>", "Change src and dest lang"),
-            "#!text": ("<word>", "Translate <word> from the src lang to dest")}
+            "#!text": ("<word>", "Translate <word> from the src lang to dest"),
+            "/start": ("", "Начать игру со смайлами"),
+            "/stop": ("", "Закончить игру со смайлами")}
 morph = pymorphy2.MorphAnalyzer()
 API_KEY = 'AQVNzhfpiSw09Z_EBDWdUtal9XPJR_I5lVASpWlT'
 FOLDER_ID = 'b1go7l39akkvmdgv9j16'
+rand_nums = random.sample(range(300, 400), k=40)
+EMOJIS = ['1F' + str(rand_nums[i]) for i in range(40)]
+CONV = 0
+USER_SCORE = {}
 
 
 class CaseError(Exception):
@@ -73,6 +80,7 @@ class YLBotClient(discord.Client):
         await member.dm_channel.send(f'Привет, {member.name}!')
 
     async def on_message(self, message):
+        global CONV
         if message.author == self.user:
             return
         d = 'https://dog.ceo/api/breeds/image/random'
@@ -264,6 +272,26 @@ class YLBotClient(discord.Client):
                 except Exception as e:
                     await message.channel.send(f'Возникла ошибка:\n`{e}`')
                     return
+            elif cmd == "/start":
+                print(CONV)
+                if CONV == 0:
+                    await message.channel.send('Начинаем игру! Присылай номер эмодзи.')
+                    CONV = 1
+                    USER_SCORE[message.author.id] = {'User': 0, 'Bot': 0}
+                    return
+            elif cmd == "/stop":
+                if CONV == 1:
+                    CONV = 0
+                    u = USER_SCORE[message.author.id]['User']
+                    b = USER_SCORE[message.author.id]['Bot']
+                    await message.channel.send(f"Игра окончена.\nСчет: Вы {u} - Бот {b}")
+                    if u == b:
+                        await message.channel.send(f"Ничья.")
+                    elif u > b:
+                        await message.channel.send(f"Вы выиграли.")
+                    else:
+                        await message.channel.send(f"Бот выиграл.")
+                    return
             return
         if "соб" in msg.lower() or "пес" in msg.lower().replace('ё', 'е'):
             url = requests.get(d).json()['message']
@@ -294,6 +322,41 @@ class YLBotClient(discord.Client):
                     t_st += TASKS[id_][i]
                 await message.channel.send(f"The timer should start in {t_st.total_seconds()} seconds")
             task.start(id_, message)
+        elif CONV:
+            global EMOJIS
+            try:
+                n = int(message.content)
+                if n < 1:
+                    raise ValueError
+                em_u = n % len(EMOJIS)
+                symb_u = EMOJIS[em_u]
+                EMOJIS.pop(em_u)
+                symb_b = random.choice(EMOJIS)
+                EMOJIS.pop(EMOJIS.index(symb_b))
+                print(symb_b, symb_u)
+                if symb_u > symb_b:
+                    USER_SCORE[message.author.id]['User'] += 1
+                else:
+                    USER_SCORE[message.author.id]['Bot'] += 1
+                u_s = USER_SCORE[message.author.id]['User']
+                u_b = USER_SCORE[message.author.id]['Bot']
+                await message.channel.send(f"Ваш эмодзи: {chr(int(symb_u, 16))}\nЭмодзи бота: {chr(int(symb_b, 16))}\nСчет: Вы {u_s} - Бот {u_b}")
+            except ValueError:
+                await message.channel.send(f"Код эмодзи должен быть положительным целым числом.")
+            if len(EMOJIS) == 0:
+                CONV = 0
+                u = USER_SCORE[message.author.id]['User']
+                b = USER_SCORE[message.author.id]['Bot']
+                await message.channel.send(f"Игра окончена.")
+                if u == b:
+                    await message.channel.send(f"Ничья.")
+                elif u > b:
+                    await message.channel.send(f"Вы выиграли.")
+                else:
+                    await message.channel.send(f"Бот выиграл.")
+                USER_SCORE[message.author.id]['User'] = 0
+                USER_SCORE[message.author.id]['Bot'] = 0
+                EMOJIS = EMOJIS = ['1F6' + str(rand_nums[i]) for i in range(20)]
         else:
             await message.channel.send("-100 social credit: Не кошка-жена и собака-жена!")
             return
