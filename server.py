@@ -522,20 +522,32 @@ class YLBotClient(discord.Client):
                         await message.channel.send(f"Бот выиграл.")
                     return
             elif cmd == "#!forecast":
-                if not USER_WEATHER.get(message.author.id):
-                    await message.channel.send("Сначала задайте город прогноза")
+                try:
+                    if len(msg2) < 2:
+                        raise IndexError
+                    if not USER_WEATHER.get(message.author.id):
+                        await message.channel.send("Сначала задайте город прогноза")
+                        return
+                    params = {"lat": USER_WEATHER[message.author.id][0],
+                              "lon": USER_WEATHER[message.author.id][1],
+                              "lang": "ru_RU",
+                              "limit": f"{int(msg2[1])}",
+                              "hours": "false",
+                              "extra": "true"}
+                    headers = {"X-Yandex-API-Key": "97fa72d6-6cec-42c1-90ac-969b3a5c9418"}
+                    res = requests.get('https://api.weather.yandex.ru/v2/forecast', params=params,
+                                       headers=headers).json()
+                    for i in send_forecast(res, message.author.id):
+                        await message.channel.send(embed=i)
+                except ValueError:
+                    await message.channel.send('Все аргументы должны иметь тип `int`')
                     return
-                params = {"lat": USER_WEATHER[message.author.id][0],
-                          "lon": USER_WEATHER[message.author.id][1],
-                          "lang": "ru_RU",
-                          "limit": "7",
-                          "hours": "false",
-                          "extra": "true"}
-                headers = {"X-Yandex-API-Key": "97fa72d6-6cec-42c1-90ac-969b3a5c9418"}
-                res = requests.get('https://api.weather.yandex.ru/v2/forecast', params=params,
-                                   headers=headers).json()
-                for i in send_forecast(res, message.author.id):
-                    await message.channel.send(embed=i)
+                except IndexError:
+                    await message.channel.send('Вы пропустили аргумент: `<days>`')
+                    return
+                except Exception as e:
+                    await message.channel.send(f'Произошла ошибка:\b{e}')
+                    return
             elif cmd == "#!current":
                 if not USER_WEATHER.get(message.author.id):
                     await message.channel.send("Сначала задайте город прогноза")
